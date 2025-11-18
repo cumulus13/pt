@@ -1,0 +1,44 @@
+[package]
+name = "pt"
+version = "1.0.12"
+edition = "2021"
+authors = ["Hadi Cahyadi <cumulus13@gmail.com>"]
+description = "Production-hardened clipboard-to-file tool with smart version management"
+license = "MIT"
+
+[dependencies]
+# CLI parsing
+clap = { version = "4.5", features = ["derive", "cargo"] }
+
+# Clipboard access
+copypasta = "0.10"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Date/Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# File system utilities
+walkdir = "2.4"
+
+# Pattern matching
+regex = "1.10"
+
+# Random number generation
+rand = "0.8"
+
+# Directory utilities
+dirs = "5.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[[bin]]
+name = "pt"
+path = "src/main.rs"
