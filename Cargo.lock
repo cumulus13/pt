@@ -637,8 +637,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "pt"
-version = "1.0.31"
+name = "pt-cli"
+version = "1.0.33"
 dependencies = [
  "chrono",
  "clap",
