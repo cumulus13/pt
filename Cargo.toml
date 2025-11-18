@@ -1,49 +1,43 @@
+[[bin]]
+name = "pt"
+path = "src/main.rs"
+
 [package]
 name = "pt"
-version = "1.0.24"
+version = "1.0.26"
 edition = "2021"
-authors = ["Hadi Cahyadi <cumulus13@gmail.com>"]
+authors = [ "Hadi Cahyadi <cumulus13@gmail.com>",]
 description = "Production-hardened clipboard-to-file tool with smart version management"
 license = "MIT"
 repository = "https://github.com/cumulus13/pt.git"
 readme = "README.md"
-keywords = ["clipboard", "cli", "paste", "tool", "file"]
-categories = ["command-line-utilities"]
+keywords = [ "clipboard", "cli", "paste", "tool", "file",]
+categories = [ "command-line-utilities",]
 
 [dependencies]
 dunce = "1.0"
-# CLI parsing
-clap = { version = "4.5", features = ["derive", "cargo"] }
-
-# Clipboard access
 copypasta = "0.10"
-
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
-
-# Date/Time
-chrono = { version = "0.4", features = ["serde"] }
-
-# File system utilities
 walkdir = "2.4"
-
-# Pattern matching
 regex = "1.10"
-
-# Random number generation
 rand = "0.8"
-
-# Directory utilities
 dirs = "5.0"
+
+[dependencies.clap]
+version = "4.5"
+features = [ "derive", "cargo",]
+
+[dependencies.serde]
+version = "1.0"
+features = [ "derive",]
+
+[dependencies.chrono]
+version = "0.4"
+features = [ "serde",]
 
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
-
-[[bin]]
-name = "pt"
-path = "src/main.rs"
