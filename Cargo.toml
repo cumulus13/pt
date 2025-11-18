@@ -1,10 +1,14 @@
 [package]
 name = "pt"
-version = "1.0.12"
+version = "1.0.21"
 edition = "2021"
 authors = ["Hadi Cahyadi <cumulus13@gmail.com>"]
 description = "Production-hardened clipboard-to-file tool with smart version management"
 license = "MIT"
+repository = "https://github.com/cumulus13/pt.git"
+readme = "README.md"
+keywords = ["clipboard", "cli", "paste", "tool", "file"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 # CLI parsing

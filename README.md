@@ -2,7 +2,7 @@
 
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.0.21-blue.svg)](https://github.com/cumulus13/pt)
+[![Version](https://img.shields.io/badge/version-1.0.22-blue.svg)](https://github.com/cumulus13/pt)
 
 A robust command-line tool for managing clipboard content with intelligent file versioning, backup management, and recursive search capabilities.
 

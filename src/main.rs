@@ -213,6 +213,35 @@ impl App {
         Self { config, version }
     }
 
+    // fn load_version() -> String {
+    //     let version_paths = vec![
+    //         PathBuf::from("VERSION"),
+    //         std::env::current_exe()
+    //             .ok()
+    //             .and_then(|p| p.parent().map(|p| p.join("VERSION")))
+    //             .unwrap_or_default(),
+    //     ];
+
+    //     for path in version_paths {
+    //         if let Ok(content) = fs::read_to_string(&path) {
+    //             let version = content.trim()
+    //                 .trim_start_matches("version")
+    //                 .trim_start_matches('=')
+    //                 .trim()
+    //                 .trim_matches(|c| c == '"' || c == '\'')
+    //                 .trim_start_matches('v');
+                
+    //             if !version.is_empty() {
+    //                 eprintln!("Version loaded from: {:?} ({})", path, version);
+    //                 return version.to_string();
+    //             }
+    //         }
+    //     }
+        
+    //     eprintln!("VERSION file not found, using 'dev'");
+    //     "dev".to_string()
+    // }
+
     fn load_version() -> String {
         let version_paths = vec![
             PathBuf::from("VERSION"),
@@ -224,16 +253,39 @@ impl App {
 
         for path in version_paths {
             if let Ok(content) = fs::read_to_string(&path) {
-                let version = content.trim()
-                    .trim_start_matches("version")
-                    .trim_start_matches('=')
-                    .trim()
-                    .trim_matches(|c| c == '"' || c == '\'')
-                    .trim_start_matches('v');
-                
-                if !version.is_empty() {
-                    eprintln!("Version loaded from: {:?} ({})", path, version);
-                    return version.to_string();
+                // Try multiple parsing strategies
+                for line in content.lines() {
+                    let line = line.trim();
+                    
+                    // Skip empty lines and comments
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
+                    }
+                    
+                    // Parse "version = "1.0.21"" format
+                    if line.contains('=') {
+                        if let Some(value) = line.split('=').nth(1) {
+                            let version = value
+                                .trim()
+                                .trim_matches(|c| c == '"' || c == '\'')
+                                .trim_start_matches('v');
+                            
+                            if !version.is_empty() {
+                                eprintln!("Version loaded from: {:?} ({})", path, version);
+                                return version.to_string();
+                            }
+                        }
+                    }
+                    
+                    // Parse simple version string "1.0.21" or "v1.0.21"
+                    let version = line
+                        .trim_matches(|c| c == '"' || c == '\'')
+                        .trim_start_matches('v');
+                    
+                    if !version.is_empty() && version.chars().any(|c| c.is_numeric()) {
+                        eprintln!("Version loaded from: {:?} ({})", path, version);
+                        return version.to_string();
+                    }
                 }
             }
         }
