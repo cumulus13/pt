@@ -52,7 +52,7 @@ cargo install --path .
 ### From Crates.io (when published)
 
 ```bash
-cargo install pt
+cargo install pt-cli
 ```
 
 ## 🎯 Quick Start

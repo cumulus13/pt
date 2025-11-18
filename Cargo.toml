@@ -3,8 +3,8 @@ name = "pt"
 path = "src/main.rs"
 
 [package]
-name = "pt"
-version = "1.0.31"
+name = "pt-cli"
+version = "1.0.32"
 edition = "2021"
 authors = [ "Hadi Cahyadi <cumulus13@gmail.com>",]
 description = "Production-hardened clipboard-to-file tool with smart version management"
