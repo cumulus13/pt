@@ -1,6 +1,6 @@
 [package]
 name = "pt"
-version = "1.0.21"
+version = "1.0.22"
 edition = "2021"
 authors = ["Hadi Cahyadi <cumulus13@gmail.com>"]
 description = "Production-hardened clipboard-to-file tool with smart version management"
@@ -11,6 +11,7 @@ keywords = ["clipboard", "cli", "paste", "tool", "file"]
 categories = ["command-line-utilities"]
 
 [dependencies]
+dunce = "1.0"
 # CLI parsing
 clap = { version = "4.5", features = ["derive", "cargo"] }
 

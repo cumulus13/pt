@@ -1,0 +1,50 @@
+[package]
+name = "pt"
+version = "1.0.12"
+edition = "2021"
+authors = ["Hadi Cahyadi <cumulus13@gmail.com>"]
+description = "Production-hardened clipboard-to-file tool with security, validation, and robustness improvements"
+license = "MIT"
+repository = "https://github.com/cumulus13/pt"
+keywords = ["clipboard", "backup", "file", "diff", "versioning"]
+categories = ["command-line-utilities", "filesystem"]
+
+[dependencies]
+# Core functionality
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive", "cargo"] }
+colored = "2.1"
+clipboard = "0.5"
+
+# Diff functionality (integrated delta-like diff)
+similar = "2.4"
+
+# Configuration
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+
+# File system operations
+walkdir = "2.4"
+glob = "0.3"
+
+# Time handling
+chrono = "0.4"
+
+# Random ID generation
+rand = "0.8"
+
+# Home directory detection
+dirs = "5.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 0
+
+[[bin]]
+name = "pt"
+path = "src/main.rs"

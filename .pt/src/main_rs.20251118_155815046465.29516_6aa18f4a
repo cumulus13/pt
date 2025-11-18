@@ -5,14 +5,13 @@
 // License: MIT
 
 use chrono::{DateTime, Local};
-use clap::{Parser, Subcommand, CommandFactory};
+use clap::{Parser, Subcommand};
 use copypasta::{ClipboardContext, ClipboardProvider};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
-use std::env;
 use std::process::{Command, exit};
 use std::time::SystemTime;
 use walkdir::WalkDir;
@@ -31,7 +30,7 @@ const COLOR_BLUE: &str = "\x1b[94m";
 const DEFAULT_MAX_CLIPBOARD_SIZE: usize = 100 * 1024 * 1024; // 100MB
 const DEFAULT_MAX_BACKUP_COUNT: usize = 100;
 const DEFAULT_MAX_FILENAME_LEN: usize = 200;
-const DEFAULT_BACKUP_DIR_NAME: &str = ".pt";
+const DEFAULT_BACKUP_DIR_NAME: &str = "backup";
 const DEFAULT_MAX_SEARCH_DEPTH: usize = 10;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -54,7 +53,6 @@ fn default_max_filename_len() -> usize { DEFAULT_MAX_FILENAME_LEN }
 fn default_backup_dir_name() -> String { DEFAULT_BACKUP_DIR_NAME.to_string() }
 fn default_max_search_depth() -> usize { DEFAULT_MAX_SEARCH_DEPTH }
 
-// In Config::default()
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -89,14 +87,12 @@ struct FileSearchResult {
     path: PathBuf,
     size: u64,
     mod_time: SystemTime,
-    #[allow(dead_code)]
     depth: usize,
 }
 
 #[derive(Debug)]
 struct TreeNode {
     name: String,
-    #[allow(dead_code)]
     path: PathBuf,
     is_dir: bool,
     size: u64,
@@ -105,11 +101,6 @@ struct TreeNode {
 
 #[derive(Parser)]
 #[command(author, version, about = "Clipboard to File Tool with Smart Version Management", long_about = None)]
-#[command(
-    name = "pt",
-    version = env!("CARGO_PKG_VERSION"),
-    about = "Production-hardened clipboard-to-file tool with smart version management"
-)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -125,10 +116,6 @@ struct Cli {
     /// Comment/message for backup
     #[arg(short, long, value_name = "COMMENT")]
     message: Option<String>,
-    
-    /// Show version information
-    #[arg(short = 'V', long)]
-    version_info: bool,
 }
 
 #[derive(Subcommand)]
@@ -204,40 +191,12 @@ enum ConfigCommands {
 
 struct App {
     config: Config,
-    version: String,
 }
 
 impl App {
     fn new() -> Self {
         let config = Self::load_config();
-        let version = Self::load_version();
-        Self { config, version }
-    }
-
-    /// Find .pt directory by walking up the directory tree (like git does with .git)
-    fn find_pt_root(&self, start_path: &Path) -> Option<PathBuf> {
-        let mut current = start_path.to_path_buf();
-        
-        // If start_path is a file, start from its parent directory
-        if current.is_file() {
-            current = current.parent()?.to_path_buf();
-        }
-        
-        loop {
-            let pt_dir = current.join(".pt");
-            
-            if pt_dir.exists() && pt_dir.is_dir() {
-                return Some(pt_dir);
-            }
-            
-            // Move to parent directory
-            match current.parent() {
-                Some(parent) => current = parent.to_path_buf(),
-                None => break, // Reached root, stop searching
-            }
-        }
-        
-        None
+        Self { config }
     }
 
     fn load_version() -> String {
@@ -251,39 +210,16 @@ impl App {
 
         for path in version_paths {
             if let Ok(content) = fs::read_to_string(&path) {
-                // Try multiple parsing strategies
-                for line in content.lines() {
-                    let line = line.trim();
-                    
-                    // Skip empty lines and comments
-                    if line.is_empty() || line.starts_with('#') {
-                        continue;
-                    }
-                    
-                    // Parse "version = "1.0.21"" format
-                    if line.contains('=') {
-                        if let Some(value) = line.split('=').nth(1) {
-                            let version = value
-                                .trim()
-                                .trim_matches(|c| c == '"' || c == '\'')
-                                .trim_start_matches('v');
-                            
-                            if !version.is_empty() {
-                                eprintln!("Version loaded from: {:?} ({})", path, version);
-                                return version.to_string();
-                            }
-                        }
-                    }
-                    
-                    // Parse simple version string "1.0.21" or "v1.0.21"
-                    let version = line
-                        .trim_matches(|c| c == '"' || c == '\'')
-                        .trim_start_matches('v');
-                    
-                    if !version.is_empty() && version.chars().any(|c| c.is_numeric()) {
-                        eprintln!("Version loaded from: {:?} ({})", path, version);
-                        return version.to_string();
-                    }
+                let version = content.trim()
+                    .trim_start_matches("version")
+                    .trim_start_matches('=')
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '\'')
+                    .trim_start_matches('v');
+                
+                if !version.is_empty() {
+                    eprintln!("Version loaded from: {:?} ({})", path, version);
+                    return version.to_string();
                 }
             }
         }
@@ -292,64 +228,18 @@ impl App {
         "dev".to_string()
     }
 
-    fn print_version(&self) {
-        println!("PT version {}", self.version);
-        println!("Production-hardened clipboard to file tool");
-        println!("Features: Recursive search, backup management, delta diff, tree view, safe delete, configurable");
-        println!();
-
-        // Show VERSION file location if found
-        let version_paths = vec![
-            PathBuf::from("VERSION"),
-            std::env::current_exe()
-                .ok()
-                .and_then(|p| p.parent().map(|p| p.join("VERSION")))
-                .unwrap_or_default(),
-        ];
-
-        for path in version_paths {
-            if path.exists() {
-                if let Ok(abs_path) = path.canonicalize() {
-                    println!("Version file: {}", abs_path.display());
-                    break;
-                }
-            }
-        }
-
-        match Self::find_config_file() {
-            Some(path) => println!("Config file: {}", path.display()),
-            None => println!("Config: Using defaults (no config file)"),
-        }
-    }
-
     fn find_config_file() -> Option<PathBuf> {
         let config_names = vec!["pt.yml", "pt.yaml", ".pt.yml", ".pt.yaml"];
         
         let mut search_paths = vec![
-            PathBuf::from("."), // Current directory
+            PathBuf::from("."),
         ];
-        
-        // Add home directory paths (cross-platform)
+
         if let Some(home) = dirs::home_dir() {
-            search_paths.push(home.clone());
-            search_paths.push(home.join(".pt"));
             search_paths.push(home.join(".config/pt"));
+            search_paths.push(home.clone());
         }
-        
-        // Add Windows-specific paths
-        #[cfg(target_os = "windows")]
-        {
-            if let Ok(appdata) = env::var("APPDATA") {
-                search_paths.push(PathBuf::from(&appdata));
-                search_paths.push(PathBuf::from(&appdata).join(".pt"));
-            }
-            if let Ok(userprofile) = env::var("USERPROFILE") {
-                search_paths.push(PathBuf::from(&userprofile));
-                search_paths.push(PathBuf::from(&userprofile).join(".pt"));
-            }
-        }
-        
-        // Search for config files
+
         for base_path in search_paths {
             for config_name in &config_names {
                 let config_path = base_path.join(config_name);
@@ -358,7 +248,7 @@ impl App {
                 }
             }
         }
-        
+
         None
     }
 
@@ -453,58 +343,21 @@ impl App {
         Ok(())
     }
 
-    /// Get or create .pt directory for backup storage
-    /// If .pt exists in any parent directory, use that
-    /// Otherwise create .pt in the file's directory
     fn ensure_backup_dir(&self, file_path: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-        let file_dir = file_path.parent().unwrap_or_else(|| Path::new("."));
-        let abs_file_dir = file_dir.canonicalize().unwrap_or_else(|_| file_dir.to_path_buf());
-        
-        // Try to find existing .pt directory in parent hierarchy
-        if let Some(pt_root) = self.find_pt_root(&abs_file_dir) {
-            eprintln!("Using existing .pt directory: {}", pt_root.display());
-            return Ok(pt_root);
+        let dir = file_path.parent().unwrap_or_else(|| Path::new("."));
+        let backup_dir = dir.join(&self.config.backup_dir_name);
+
+        if !backup_dir.exists() {
+            fs::create_dir_all(&backup_dir)?;
+            println!("📁 Created backup directory: {}", backup_dir.display());
         }
-        
-        // No .pt found, create in current directory
-        let pt_dir = abs_file_dir.join(".pt");
-        
-        if !pt_dir.exists() {
-            fs::create_dir_all(&pt_dir)?;
-            println!("📁 Created .pt directory: {}", pt_dir.display());
-            
-            // Create .gitignore inside .pt to exclude from git
-            let gitignore_path = pt_dir.join(".gitignore");
-            fs::write(&gitignore_path, "*\n")?;
-            eprintln!("Created .pt/.gitignore to exclude backups from git");
-        }
-        
-        Ok(pt_dir)
+
+        Ok(backup_dir)
     }
 
-    /// Generate backup path with relative structure
-    /// Example: If file is at /project/src/main.rs and .pt is at /project/.pt
-    /// Backup will be at /project/.pt/src/main.rs.TIMESTAMP
-    fn generate_backup_path(&self, file_path: &Path, pt_dir: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-        let abs_file = file_path.canonicalize()?;
-        
-        // Find the .pt root parent
-        let pt_parent = pt_dir.parent().ok_or("Invalid .pt directory")?;
-        
-        // Calculate relative path from .pt parent to file
-        let rel_path = abs_file.strip_prefix(pt_parent)
-            .map_err(|_| "File is outside .pt directory scope")?;
-        
-        // Create subdirectory structure inside .pt
-        let backup_subdir = pt_dir.join(rel_path.parent().unwrap_or_else(|| Path::new(".")));
-        
-        if !backup_subdir.exists() {
-            fs::create_dir_all(&backup_subdir)?;
-        }
-        
-        // Generate unique backup filename
-        let file_name = rel_path.file_name().unwrap().to_string_lossy();
-        let extension = rel_path.extension()
+    fn generate_unique_backup_name(&self, file_path: &Path) -> String {
+        let file_name = file_path.file_name().unwrap().to_string_lossy();
+        let extension = file_path.extension()
             .map(|e| e.to_string_lossy().to_string())
             .unwrap_or_default();
         
@@ -513,42 +366,17 @@ impl App {
         } else {
             file_name.as_ref()
         };
-        
-        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S%6f").to_string();
+
+        let timestamp = Local::now().format("%Y%m%d_%H%M%S%6f").to_string();
         let pid = std::process::id();
         let random_id = format!("{:x}", rand::random::<u32>());
-        
-        let backup_filename = if !extension.is_empty() {
+
+        if !extension.is_empty() {
             format!("{}_{}.{}.{}_{}", name_without_ext, extension, timestamp, pid, random_id)
         } else {
             format!("{}.{}.{}_{}", name_without_ext, timestamp, pid, random_id)
-        };
-        
-        Ok(backup_subdir.join(backup_filename))
+        }
     }
-    
-    // fn generate_unique_backup_name(&self, file_path: &Path) -> String {
-    //     let file_name = file_path.file_name().unwrap().to_string_lossy();
-    //     let extension = file_path.extension()
-    //         .map(|e| e.to_string_lossy().to_string())
-    //         .unwrap_or_default();
-        
-    //     let name_without_ext = if !extension.is_empty() {
-    //         file_name.trim_end_matches(&format!(".{}", extension))
-    //     } else {
-    //         file_name.as_ref()
-    //     };
-
-    //     let timestamp = Local::now().format("%Y%m%d_%H%M%S%6f").to_string();
-    //     let pid = std::process::id();
-    //     let random_id = format!("{:x}", rand::random::<u32>());
-
-    //     if !extension.is_empty() {
-    //         format!("{}_{}.{}.{}_{}", name_without_ext, extension, timestamp, pid, random_id)
-    //     } else {
-    //         format!("{}.{}.{}_{}", name_without_ext, timestamp, pid, random_id)
-    //     }
-    // }
 
     fn save_backup_metadata(&self, backup_path: &Path, comment: &str, original: &Path, size: u64) 
         -> Result<(), Box<dyn std::error::Error>> 
@@ -580,7 +408,6 @@ impl App {
         Ok(metadata.comment)
     }
 
-    /// Modified auto_rename_if_exists to use .pt directory
     fn auto_rename_if_exists(&self, file_path: &Path, comment: &str) 
         -> Result<(), Box<dyn std::error::Error>> 
     {
@@ -594,23 +421,21 @@ impl App {
             return Ok(());
         }
 
-        let pt_dir = self.ensure_backup_dir(file_path)?;
-        let backup_path = self.generate_backup_path(file_path, &pt_dir)?;
+        let backup_dir = self.ensure_backup_dir(file_path)?;
+        let backup_name = self.generate_unique_backup_name(file_path);
+        let backup_path = backup_dir.join(&backup_name);
 
         fs::copy(file_path, &backup_path)?;
         self.save_backup_metadata(&backup_path, comment, file_path, metadata.len())?;
 
         eprintln!("Backup created: {} -> {}", file_path.display(), backup_path.display());
         
-        // Show relative path for cleaner output
-        let rel_backup = backup_path.strip_prefix(&pt_dir)
-            .unwrap_or(&backup_path);
-        
         if !comment.is_empty() {
-            println!("📦 Backup created: {}.pt/{}{}", COLOR_GREEN, rel_backup.display(), COLOR_RESET);
+            eprintln!("Backup comment: {}", comment);
+            println!("📦 Backup created: {}{}{}", COLOR_GREEN, backup_name, COLOR_RESET);
             println!("💬 Comment: \"{}{}{}", COLOR_CYAN, comment, COLOR_RESET);
         } else {
-            println!("📦 Backup created: {}.pt/{}{}", COLOR_GREEN, rel_backup.display(), COLOR_RESET);
+            println!("📦 Backup created: {}{}{}", COLOR_GREEN, backup_name, COLOR_RESET);
         }
 
         Ok(())
@@ -655,36 +480,18 @@ impl App {
         Ok(())
     }
 
-    /// List backups from .pt directory with structure preservation
     fn list_backups(&self, file_path: &Path) -> Result<Vec<BackupInfo>, Box<dyn std::error::Error>> {
         self.validate_path(file_path)?;
 
-        let abs_file = file_path.canonicalize()
-            .unwrap_or_else(|_| file_path.to_path_buf());
-        
-        let file_dir = abs_file.parent().unwrap_or_else(|| Path::new("."));
-        
-        // Find .pt directory
-        let pt_dir = match self.find_pt_root(file_dir) {
-            Some(dir) => dir,
-            None => return Ok(Vec::new()), // No .pt directory found
-        };
-        
-        let pt_parent = pt_dir.parent().ok_or("Invalid .pt directory")?;
-        
-        // Calculate relative path of file from .pt parent
-        let rel_path = abs_file.strip_prefix(pt_parent)
-            .map_err(|_| "File is outside .pt directory scope")?;
-        
-        // Backup directory should mirror file structure
-        let backup_dir = pt_dir.join(rel_path.parent().unwrap_or_else(|| Path::new(".")));
-        
+        let dir = file_path.parent().unwrap_or_else(|| Path::new("."));
+        let backup_dir = dir.join(&self.config.backup_dir_name);
+
         if !backup_dir.exists() {
             return Ok(Vec::new());
         }
 
-        let file_name = abs_file.file_name().unwrap().to_string_lossy();
-        let extension = abs_file.extension()
+        let file_name = file_path.file_name().unwrap().to_string_lossy();
+        let extension = file_path.extension()
             .map(|e| e.to_string_lossy().to_string())
             .unwrap_or_default();
         
@@ -741,25 +548,18 @@ impl App {
         Ok(backups)
     }
 
-    /// Update print_backup_table to show .pt location
     fn print_backup_table(&self, file_path: &Path, backups: &[BackupInfo]) {
-        let pt_location = if let Some(pt_dir) = self.find_pt_root(file_path) {
-            format!("({})", pt_dir.display())
-        } else {
-            String::from("(.pt)")
-        };
-        
         println!("\n{}📂 Backup files for '{}{}{}'{}'{}",
             COLOR_CYAN, COLOR_BOLD, file_path.display(), COLOR_RESET, COLOR_CYAN, COLOR_RESET);
-        println!("{}Total: {} backup(s) stored in {}{}\n",
-            COLOR_GRAY, backups.len(), pt_location, COLOR_RESET);
+        println!("{}Total: {} backup(s) (stored in ./{}/){}\n",
+            COLOR_GRAY, backups.len(), self.config.backup_dir_name, COLOR_RESET);
 
-        // Rest of the table printing code remains the same...
         const COL1_WIDTH: usize = 40;
         const COL2_WIDTH: usize = 19;
         const COL3_WIDTH: usize = 12;
         const COL4_WIDTH: usize = 30;
 
+        // Top border
         println!("{}┌{}┬{}┬{}┬{}┐{}",
             COLOR_GRAY,
             "─".repeat(COL1_WIDTH + 2),
@@ -768,6 +568,7 @@ impl App {
             "─".repeat(COL4_WIDTH + 2),
             COLOR_RESET);
 
+        // Header
         println!("{}│{} {}{}{:<width1$}{} {}│{} {}{}{:<width2$}{} {}│{} {}{}{:>width3$}{} {}│{} {}{}{:<width4$}{} {}│{}",
             COLOR_GRAY, COLOR_RESET,
             COLOR_BOLD, COLOR_YELLOW, "File Name", COLOR_RESET,
@@ -783,6 +584,7 @@ impl App {
             width3 = COL3_WIDTH,
             width4 = COL4_WIDTH);
 
+        // Separator
         println!("{}├{}┼{}┼{}┼{}┤{}",
             COLOR_GRAY,
             "─".repeat(COL1_WIDTH + 2),
@@ -791,6 +593,7 @@ impl App {
             "─".repeat(COL4_WIDTH + 2),
             COLOR_RESET);
 
+        // Data rows
         for (i, backup) in backups.iter().enumerate() {
             let mut name = backup.name.clone();
             let max_name_len = COL1_WIDTH - 5;
@@ -830,6 +633,7 @@ impl App {
                 width4 = COL4_WIDTH);
         }
 
+        // Bottom border
         println!("{}└{}┴{}┴{}┴{}┘{}\n",
             COLOR_GRAY,
             "─".repeat(COL1_WIDTH + 2),
@@ -838,7 +642,6 @@ impl App {
             "─".repeat(COL4_WIDTH + 2),
             COLOR_RESET);
     }
-
 
     fn restore_backup(&self, backup_path: &Path, original_path: &Path, comment: &str) 
         -> Result<(), Box<dyn std::error::Error>> 
@@ -981,75 +784,24 @@ impl App {
     }
 
     fn run_delta(&self, file1: &Path, file2: &Path) -> Result<(), Box<dyn std::error::Error>> {
-        // 1. Validasi file
-        if !file1.exists() {
-            return Err(format!("Backup file not found: {}", file1.display()).into());
-        }
-        if !file2.exists() {
-            return Err(format!("File not found: {}", file2.display()).into());
-        }
-
-        // 2. Path normalization without UNC prefix
-        let abs_file1 = dunce::canonicalize(file1)
-            .map_err(|e| format!("Failed to resolve path: {}", e))?;
-        let abs_file2 = dunce::canonicalize(file2)
-            .map_err(|e| format!("Failed to resolve path: {}", e))?;
-
-        // 3. Run delta with pager setup
-        match self.exec_delta_interactive(&abs_file1, &abs_file2) {
-            Ok(()) => Ok(()),
-            Err(delta_err) => {
-                eprintln!("Delta error: {}. Fallback ke git diff...", delta_err);
-                self.exec_git_diff(&abs_file1, &abs_file2)
-            }
-        }
-    }
-
-    /// Run delta with interactive pager (less mode)
-    fn exec_delta_interactive(&self, file1: &Path, file2: &Path) -> Result<(), String> {
-        let mut cmd = Command::new("delta");
-        
-        cmd.env("DELTA_PAGER", "less")
-            .env("LESS", "-R -X")  // -R=warna, -X=clear the screen after quit
-            .arg("--paging=always")  // MUST for force less mode
-            .arg("--navigate")       // Enable n/N for next/previous files
-            .arg(file1)
-            .arg(file2);
-
-        // Windows: flags for interactive processes (key to less mode!)
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x00000200); // CREATE_NEW_PROCESS_GROUP
-        }
-
-        let status = cmd.status().map_err(|e| match e.kind() {
-            io::ErrorKind::NotFound => "Delta not found in PATH".to_string(),
-            _ => format!("Delta error: {}", e),
-        })?;
-
-        match status.code() {
-            Some(0) | Some(1) => Ok(()), // 0=sama, 1=beda
-            Some(code) => Err(format!("Exit code {}", code)),
-            None => Err("Terminated by signal".to_string()),
-        }
-    }
-
-    /// Git diff fallback
-    fn exec_git_diff(&self, file1: &Path, file2: &Path) -> Result<(), Box<dyn std::error::Error>> {
-        let status = Command::new("git")
-            .arg("diff")
-            .arg("--no-index")
-            .arg("--color=always")
+        let status = Command::new("delta")
             .arg(file1)
             .arg(file2)
-            .status()
-            .map_err(|e| format!("Git error: {}", e))?;
+            .status();
 
-        match status.code() {
-            Some(0) | Some(1) => Ok(()),
-            Some(code) => Err(format!("Git diff exit code: {}", code).into()),
-            None => Err("Git diff terminated by signal".into()),
+        match status {
+            Ok(status) => {
+                // Exit code 1 is normal for delta when files differ
+                if status.code() == Some(1) || status.success() {
+                    Ok(())
+                } else {
+                    Err("Delta execution failed".into())
+                }
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                Err("delta is not installed. Install it from: https://github.com/dandavison/delta".into())
+            }
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -1411,49 +1163,41 @@ impl App {
         let backups = self.list_backups(&file_path)?;
 
         if backups.is_empty() {
-            return Err(format!("There is no backup for: {}\nCheck the directory .{}/", 
+            return Err(format!("No backups found for: {} (check ./{}/)",
                 file_path.display(), self.config.backup_dir_name).into());
         }
 
         let selected_backup = if use_last {
-            println!("{}📊 Comparing with the last backup: {}{}\n",
+            println!("{}📊 Comparing with last backup: {}{}\n",
                 COLOR_CYAN, backups[0].name, COLOR_RESET);
             &backups[0]
         } else {
             self.print_backup_table(&file_path, &backups);
-            print!("Select backup (1-{}) or 0 for cancel: ", backups.len());
+
+            print!("Enter backup number to compare (1-{}) or 0 to cancel: ", backups.len());
             io::stdout().flush()?;
-            
+
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
+
             let choice: usize = input.trim().parse()
-                .map_err(|_| "Invalid input")?;
+                .map_err(|_| "Invalid input: please enter a number")?;
 
             if choice == 0 {
-                return Err("Cancelled".into());
+                return Err("Diff cancelled".into());
             }
+
             if choice > backups.len() {
-                return Err(format!("The choice must be between 0-{}", backups.len()).into());
+                return Err(format!("Invalid selection: must be between 0 and {}", backups.len()).into());
             }
-            println!("\n{}📊 Compare with: {}{}\n", 
-                COLOR_CYAN, backups[choice - 1].name, COLOR_RESET);
+
+            println!("\n{}📊 Comparing with: {}{}\n", COLOR_CYAN, backups[choice - 1].name, COLOR_RESET);
             &backups[choice - 1]
         };
 
-        // Validasi file backup benar-benar ada
-        if !selected_backup.path.exists() {
-            return Err(format!(
-                "Backup file not found in: {}\n\
-                This is a path resolution bug. Try:\n\
-                1. Check the contents of the directory .{}/\n\
-                2. Make sure there are no directory changes\n\
-                3. Report a bug with the path above", 
-                selected_backup.path.display(),
-                self.config.backup_dir_name
-            ).into());
-        }
+        self.run_delta(&selected_backup.path, &file_path)?;
 
-        self.run_delta(&selected_backup.path, &file_path)
+        Ok(())
     }
 
     fn handle_append(&self, filename: &str, comment: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
@@ -1504,12 +1248,6 @@ fn main() {
     
     let cli = Cli::parse();
 
-    // Handle version flag
-    if cli.version_info {
-        app.print_version();
-        return;
-    }
-
     let result = match cli.command {
         Some(Commands::Config { subcommand }) => {
             match subcommand {
@@ -1547,10 +1285,7 @@ fn main() {
             if let Some(filename) = cli.filename {
                 app.handle_write(&filename, cli.check, cli.message)
             } else {
-                // No filename provided, show help
-                let mut cmd = Cli::command();
-                cmd.print_help().unwrap();
-                println!();
+                println!("{}❌ Error: Filename required{}", COLOR_RED, COLOR_RESET);
                 exit(1);
             }
         }
